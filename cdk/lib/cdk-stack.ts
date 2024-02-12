@@ -5,6 +5,10 @@ import { Bucket, ObjectOwnership } from 'aws-cdk-lib/aws-s3'
 import {
   CfnOriginAccessControl,
   Distribution,
+  Function,
+  FunctionCode,
+  FunctionEventType,
+  FunctionRuntime,
   PriceClass,
   ViewerProtocolPolicy,
 } from 'aws-cdk-lib/aws-cloudfront'
@@ -12,6 +16,7 @@ import { CfnDistribution } from 'aws-cdk-lib/aws-lightsail'
 import { S3Origin } from 'aws-cdk-lib/aws-cloudfront-origins'
 import { BucketDeployment, Source } from 'aws-cdk-lib/aws-s3-deployment'
 import { Effect, PolicyStatement, ServicePrincipal } from 'aws-cdk-lib/aws-iam'
+import * as path from 'node:path'
 
 interface CdkStackProps extends cdk.StackProps {
   readonly projectName: string
@@ -32,8 +37,15 @@ export class CdkStack extends cdk.Stack {
     // CloudFrontのログを保存するS3バケットを作成
     const loggingBucket = this.createLoggingBucket()
 
+    // リダイレクト用のLambda@Edgeを作成
+    const redirectFunction = this.createRedirectLambda()
+
     // CloudFrontディストリビューションを作成
-    const distribution = this.createCloudFrontDistribution(originBucket, loggingBucket)
+    const distribution = this.createCloudFrontDistribution(
+      originBucket,
+      loggingBucket,
+      redirectFunction,
+    )
 
     // CloudFrontからのアクセスを許可するバケットポリシーを追加
     this.addToResourcePolicy(this.account, originBucket, distribution)
@@ -65,7 +77,21 @@ export class CdkStack extends cdk.Stack {
     })
   }
 
-  private createCloudFrontDistribution(originBucket: Bucket, loggingBucket: Bucket): Distribution {
+  private createRedirectLambda(): Function {
+    return new Function(this, 'RedirectFunction', {
+      functionName: `${this.projectName}-redirect-function`,
+      runtime: FunctionRuntime.JS_2_0,
+      code: FunctionCode.fromFile({
+        filePath: path.join(__dirname, '../../lambda/redirect.js'),
+      }),
+    })
+  }
+
+  private createCloudFrontDistribution(
+    originBucket: Bucket,
+    loggingBucket: Bucket,
+    redirectFunction: Function,
+  ): Distribution {
     const distribution = new Distribution(this, 'Distribution', {
       comment: `${this.projectName}-distribution`,
       defaultRootObject: 'index.html',
@@ -75,6 +101,12 @@ export class CdkStack extends cdk.Stack {
           originId: `${this.projectName}-s3-origin`,
         }),
         viewerProtocolPolicy: ViewerProtocolPolicy.ALLOW_ALL,
+        functionAssociations: [
+          {
+            function: redirectFunction,
+            eventType: FunctionEventType.VIEWER_REQUEST,
+          },
+        ],
       },
       logBucket: loggingBucket,
       enableLogging: true,

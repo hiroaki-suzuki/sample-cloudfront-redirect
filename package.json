@@ -5,7 +5,9 @@
     "cdk:deploy": "cd cdk && npm run cdk -- deploy",
     "cdk:destroy": "cd cdk && npm run cdk -- destroy",
     "cf:deploy": "aws cloudformation deploy --stack-name sample-cloudfront-redirect --template-file ./cloudformation/cf-template.yml",
-    "cf:destroy": "aws cloudformation delete-stack --stack-name sample-cloudfront-redirect"
+    "cf:destroy": "aws cloudformation delete-stack --stack-name sample-cloudfront-redirect",
+    "terraform:apply": "cd terraform && terraform apply --var-file main.tfvars",
+    "terraform:destroy": "cd terraform && terraform destroy --var-file main.tfvars"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.21.0",

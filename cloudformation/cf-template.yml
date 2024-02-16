@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: A sample template
+
+Resources:
+  OriginBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-origin-bucket"
+      VersioningConfiguration:
+        Status: Enabled
+  OriginBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref OriginBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontServicePrincipal
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${OriginBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${Distribution}"
+  CloudFrontLogBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-cloudfront-log-bucket"
+      VersioningConfiguration:
+        Status: Enabled
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+  RedirectFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub "${AWS::StackName}-redirect-function"
+      FunctionConfig:
+        Comment: !Sub "${AWS::StackName}-redirect-function"
+        Runtime: cloudfront-js-2.0
+      AutoPublish: true
+      FunctionCode: |
+        function handler(event) {
+          const uri = event.request.uri
+          if (isNotRedirect(uri)) return event.request
+
+          const newUri = getNewUri(uri)
+          return {
+            statusCode: 301,
+            statusDescription: 'Moved Permanently',
+            headers: { location: { value: newUri } },
+          }
+        }
+
+        function isNotRedirect(uri) {
+          return uri === '/' || uri === '/index.html'
+        }
+
+        function getNewUri(uri) {
+          if (uri === '/page1.html') {
+            return 'https://docs.aws.amazon.com/ja_jp/AmazonCloudFront/latest/DeveloperGuide/Introduction.html'
+          }
+          return 'https://aws.amazon.com/jp/'
+        }
+  S3OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-s3-origin-access-control"
+        Description: "S3 Origin Access Control"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub "${AWS::StackName}-distribution"
+        Enabled: true
+        HttpVersion: http2
+        IPV6Enabled: true
+        PriceClass: PriceClass_200
+        DefaultRootObject: index.html
+        DefaultCacheBehavior:
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          Compress: true
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt RedirectFunction.FunctionARN
+          TargetOriginId: !Sub "${AWS::StackName}-s3-origin"
+          ViewerProtocolPolicy: allow-all
+        Origins:
+          - DomainName: !GetAtt OriginBucket.RegionalDomainName
+            Id: !Sub "${AWS::StackName}-s3-origin"
+            OriginAccessControlId: !GetAtt S3OriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        Logging:
+          Bucket: !GetAtt CloudFrontLogBucket.RegionalDomainName
+          IncludeCookies: true
+
+Outputs:
+  CloudFrontDomainName:
+    Value: !Sub "https://${Distribution.DomainName}"

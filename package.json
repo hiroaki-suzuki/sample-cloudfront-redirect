@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "scripts": {
     "cdk:deploy": "cd cdk && npm run cdk -- deploy",
-    "cdk:destroy": "cd cdk && npm run cdk -- destroy"
+    "cdk:destroy": "cd cdk && npm run cdk -- destroy",
+    "cf:deploy": "aws cloudformation deploy --stack-name sample-cloudfront-redirect --template-file ./cloudformation/cf-template.yml",
+    "cf:destroy": "aws cloudformation delete-stack --stack-name sample-cloudfront-redirect"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.21.0",
